@@ -1,0 +1,28 @@
+{
+  "name": "dachcom-digital/typo3-social-data-facebook-connector",
+  "type": "typo3-cms-extension",
+  "description": "TYPO3 Social Data | Facebook Connector",
+  "authors": [
+    {
+      "name": "DACHCOM.DIGITAL AG Ben Walch",
+      "email": "bwalch@dachcom.ch",
+      "homepage": "https://www.dachcom.com",
+      "role": "Developer"
+    }
+  ],
+  "require": {
+    "php": ">=7.4",
+    "dachcom-digital/typo3-social-data": "*",
+    "league/oauth2-facebook": "^2.0"
+  },
+  "autoload": {
+    "psr-4": {
+      "DachcomDigital\\SocialDataFacebook\\": "Classes/"
+    }
+  },
+  "extra": {
+    "typo3/cms": {
+      "extension-key": "social_data_facebook"
+    }
+  }
+}

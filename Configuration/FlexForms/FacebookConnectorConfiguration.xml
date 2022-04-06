@@ -1,0 +1,42 @@
+<T3DataStructure>
+    <ROOT>
+        <type>array</type>
+        <el>
+            <app_id>
+                <TCEforms>
+                    <label>App ID</label>
+                    <config>
+                        <type>input</type>
+                    </config>
+                </TCEforms>
+            </app_id>
+            <app_secret>
+                <TCEforms>
+                    <label>App Secret</label>
+                    <config>
+                        <type>input</type>
+                    </config>
+                </TCEforms>
+            </app_secret>
+            <page_id>
+                <TCEforms>
+                    <label>Page ID</label>
+                    <config>
+                        <type>input</type>
+                    </config>
+                </TCEforms>
+            </page_id>
+            <access_token>
+                <TCEforms>
+                    <displayCond>FIELD:parentRec.connector_status:=:connected</displayCond>
+                    <label>Access Token</label>
+                    <config>
+                        <type>input</type>
+                        <size>255</size>
+                        <readOnly>true</readOnly>
+                    </config>
+                </TCEforms>
+            </access_token>
+        </el>
+    </ROOT>
+</T3DataStructure>

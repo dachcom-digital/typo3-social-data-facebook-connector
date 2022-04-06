@@ -1,0 +1,16 @@
+services:
+    _defaults:
+        autowire: true
+        autoconfigure: true
+        public: false
+
+    DachcomDigital\SocialDataFacebook\:
+        resource: '../Classes/*'
+        exclude: '../Classes/{DependencyInjection,Domain/Model,Event}/*'
+
+    DachcomDigital\SocialDataFacebook\Connector\FacebookConnectorDefinition:
+        tags:
+            - name: social_data.connector_definition
+              identifier: facebook
+              connector: DachcomDigital\SocialDataFacebook\Connector\FacebookConnector
+
