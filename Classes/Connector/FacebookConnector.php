@@ -47,6 +47,8 @@ class FacebookConnector implements ConnectorInterface
         if (!is_array($items) || count($items) === 0) {
             return [];
         }
+        
+        $items = array_filter($items, [$this, 'isItemValid']);
     
         $preparedItems = [];
         
@@ -57,14 +59,27 @@ class FacebookConnector implements ConnectorInterface
         return $preparedItems;
     }
     
+    protected function isItemValid($item): bool
+    {
+        if (!is_array($item)) {
+            return false;
+        }
+        
+        if (array_key_exists('is_published', $item)) {
+            return $item['is_published'] === true;
+        }
+        
+        return true;
+    }
+    
     protected function getPreparedItem($item): array
     {
         return [
             'id'         => $item['id'],
-            'content'    => $item['message'],
-            'datetime'   => \DateTime::createFromFormat(\DateTime::ISO8601, $item['created_time']),
-            'url'        => $item['permalink_url'],
-            'posterUrl'  => $item['full_picture']
+            'content'    => $item['message'] ?? '',
+            'datetime'   => \DateTime::createFromFormat(\DateTime::ISO8601, $item['created_time']) ?: null,
+            'url'        => $item['permalink_url'] ?? '',
+            'posterUrl'  => $item['full_picture'] ?? ''
         ];
     }
     
@@ -72,4 +87,5 @@ class FacebookConnector implements ConnectorInterface
     {
         return new FacebookClient($this->configuration);
     }
+    
 }

@@ -30,28 +30,13 @@ First, you need to create a facebook app.
 
 ## Configuration
 
-In the backend, prepare sysfolders for storing the feed and the posts.
-Create a new record of type "Feed" which is found under the "Social Data" section.
-
 ### Connect a Feed
 
-Use `DachcomDigital\SocialDataFacebook\Connector\FacebookConnectorDefinition` as connector.
+Use `facebook` as connector.  
 After filling out the connector configuration, save, and click on the "connect" button.
+
+![facebook-connector-configuration](https://user-images.githubusercontent.com/7903333/166699535-ee1257e2-51ce-4bd5-93b0-2d9ddb773364.png)
 
 After confirming the modal, a popup opens which guides you through the facebook authentication process.
 If everything went fine, the connection setup is completed after the popup closes and the connector status displays "connected".
 Otherwise, an error message is shown.
-
-### Create a wall
-
-To display feed data on your page, create a new record of type "Wall" which is found under the "Social Data" section.
-Select the feeds you want to be shown.
-
-### Fetch posts
-
-The extension provides a console command `social-data:fetch:posts`, which can be used from cli (for testing).  
-> To keep the posts in sync, create a scheduled task of type "Execute console commands", and select the above command. 
-
-### Display the data
-
-Use the Plugin "Social Data" plugin and select the desired wall to output the posts in the frontend.
