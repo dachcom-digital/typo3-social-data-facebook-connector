@@ -36,7 +36,7 @@ class FacebookConnectController implements SingletonInterface
     protected UriBuilder $uriBuilder;
     protected ConnectorDefinitionRegistry  $connectorRegistry;
     protected FeedRepository $feedRepository;
-    
+
     public function __construct(
         PersistenceManagerInterface $persistenceManager,
         UriBuilder $uriBuilder,
@@ -50,7 +50,7 @@ class FacebookConnectController implements SingletonInterface
         $this->connectorRegistry = $connectorDefinitionRegistry;
         $this->feedRepository = $feedRepository;
     }
-    
+
     public function connect(ServerRequestInterface $request): ResponseInterface
     {
         $feed = $this->feedRepository->findByUid($request->getQueryParams()['feed_id']);
@@ -58,30 +58,30 @@ class FacebookConnectController implements SingletonInterface
         if (!$feed instanceof Feed) {
             return new Response('feed not found', 404);
         }
-        
+
         $connectorConfiguration = $feed->getConnectorConfiguration();
-        
+
         $facebookClient = new FacebookClient($connectorConfiguration);
         $redirectUri = $this->generateRedirectUri();
         $oauthProvider = $facebookClient->getOauthProvider($redirectUri);
-        
+
         $authUrl = $oauthProvider->getAuthorizationUrl([
             'scope' => 'pages_show_list'
         ]);
-        
+
         $session = $this->userSessionManager->createFromRequestOrAnonymous($request, BackendUserAuthentication::getCookieName());
         $session->set('FBLH_oauth_state', $oauthProvider->getState());
         $session->set('FBLH_feed_id', $feed->getUid());
-        
+
         $this->userSessionManager->updateSession($session);
-        
+
         return new RedirectResponse($authUrl);
     }
-    
+
     public function connectCallback(ServerRequestInterface $request): ResponseInterface
     {
         $session = $this->userSessionManager->createFromRequestOrAnonymous($request, BackendUserAuthentication::getCookieName());
-        
+
         if (empty($request->getQueryParams()['state']) || $request->getQueryParams()['state'] !== $session->get('FBLH_oauth_state')) {
             $content = [
                 'error' => [
@@ -91,9 +91,9 @@ class FacebookConnectController implements SingletonInterface
             ];
             return $this->buildConnectResponse($content, 400);
         }
-        
+
         $feedId = $session->get('FBLH_feed_id');
-        
+
         if (empty($feedId)) {
             $content = [
                 'error' => [
@@ -102,9 +102,9 @@ class FacebookConnectController implements SingletonInterface
             ];
             return $this->buildConnectResponse($content, 400);
         }
-        
+
         $feed = $this->feedRepository->findByUid($feedId);
-        
+
         if (!$feed instanceof Feed) {
             $content = [
                 'error' => [
@@ -113,14 +113,14 @@ class FacebookConnectController implements SingletonInterface
             ];
             return $this->buildConnectResponse($content, 404);
         }
-        
+
         $connectorConfiguration = $feed->getConnectorConfiguration();
         $facebookClient = new FacebookClient($connectorConfiguration);
         $redirectUri = $this->generateRedirectUri();
         $oauthProvider = $facebookClient->getOauthProvider($redirectUri);
-        
+
         try {
-            $defaultToken = $oauthProvider->getAccessToken('authorization_code', ['code' => $request->getQueryParams()['code']]);
+            $defaultUserToken = $oauthProvider->getAccessToken('authorization_code', ['code' => $request->getQueryParams()['code']]);
         } catch (\Throwable $e) {
             $content = [
                 'error' => [
@@ -130,8 +130,8 @@ class FacebookConnectController implements SingletonInterface
             ];
             return $this->buildConnectResponse($content, 500);
         }
-    
-        if (!$defaultToken instanceof AccessToken) {
+
+        if (!$defaultUserToken instanceof AccessToken) {
             $message = 'Could not generate access token';
             if (array_key_exists('error_message', $request->getQueryParams()) && !empty($request->getQueryParams()['error_message'])) {
                 $message = $request->getQueryParams()['error_message'];
@@ -144,9 +144,9 @@ class FacebookConnectController implements SingletonInterface
             ];
             return $this->buildConnectResponse($content, 500);
         }
-    
+
         try {
-            $accessToken = $oauthProvider->getLongLivedAccessToken($defaultToken);
+            $userToken = $oauthProvider->getLongLivedAccessToken($defaultUserToken);
         } catch (\Throwable $e) {
             $content = [
                 'error' => [
@@ -156,7 +156,10 @@ class FacebookConnectController implements SingletonInterface
             ];
             return $this->buildConnectResponse($content, 500);
         }
-    
+
+        // use this user token for following api calls
+        $facebookClient->setConfigurationValue('access_token', $userToken->getToken());
+
         try {
             // @todo: really? Dispatch the /me/accounts request to make the user token finally ever lasting.
             $response = $facebookClient->get('/me/accounts?fields=access_token');
@@ -164,9 +167,9 @@ class FacebookConnectController implements SingletonInterface
             // we don't need to fail here.
             // in worst case this means only we don't have a never expiring token
         }
-        
+
         try {
-            $accessTokenMetadata = $facebookClient->get('/debug_token', ['input_token' => $accessToken->getToken()]);
+            $accessTokenMetadata = $facebookClient->get('/debug_token', ['input_token' => $userToken->getToken()]);
         } catch (\Throwable $e) {
             $content = [
                 'error' => [
@@ -176,55 +179,91 @@ class FacebookConnectController implements SingletonInterface
             ];
             return $this->buildConnectResponse($content, 500);
         }
-        
+
         $expiresAt = null;
         if (is_array($accessTokenMetadata) && !empty($accessTokenMetadata['data']['expires_at'])) {
             $expiresAt = $accessTokenMetadata['data']['expires_at'];
         }
-        
-        $feed->setConnectorConfigurationValue('access_token', $accessToken);
+
+        // finally, we can obtain the page token
+        try {
+            $pagesData = $facebookClient->get('/me/accounts?fields=name,id,access_token');
+        } catch(\Throwable $e) {
+            $content = [
+                'error' => [
+                    'reason' => 'page token fetch error',
+                    'message' => $e->getMessage()
+                ]
+            ];
+            return $this->buildConnectResponse($content, 500);
+        }
+
+        $pageToken = null;
+
+        foreach ($pagesData['data'] as $pageData) {
+            if ($pageData['id'] ?? null && $pageData['id'] === $connectorConfiguration['page_id']) {
+                $pageToken = $pageData['access_token'] ?? null;
+                break;
+            }
+        }
+
+        if (empty($pageToken)) {
+            $content = [
+                'error' => [
+                    'reason' => 'no page token not found',
+                    'message' => sprintf(
+                        'page token cannot be found for page with id "%s". debug data: %s',
+                        $connectorConfiguration['page_id'],
+                        print_r($pagesData, true)
+                    )
+                ]
+            ];
+            return $this->buildConnectResponse($content, 500);
+        }
+
+        $feed->setConnectorConfigurationValue('access_token', $pageToken);
         $feed->setConnectorStatus(ConnectorInterface::STATUS_CONNECTED);
-        
+
         $this->feedRepository->update($feed);
         $this->persistenceManager->persistAll();
-        
+
         $content = [
-            'access_token' => $accessToken->getToken(),
+            'access_token' => $pageToken,
             'expires_at' => $expiresAt
         ];
-        
+
         return $this->buildConnectResponse($content);
     }
-    
+
     public function disconnect(ServerRequestInterface $request): ResponseInterface
     {
         $feed = $this->feedRepository->findByUid($request->getQueryParams()['feed_id']);
-        
+
         if (!$feed instanceof Feed) {
             return new JsonResponse(['error' => ['message' => 'feed not found']], 404);
         }
-        
+
         $feed->setConnectorConfigurationValue('access_token', '');
         $feed->setConnectorStatus('');
-        
+
         $this->feedRepository->update($feed);
         $this->persistenceManager->persistAll();
-        
+
         return new JsonResponse(['success' => true]);
     }
-    
+
     public function debugToken(ServerRequestInterface $request): ResponseInterface
     {
         $feed = $this->feedRepository->findByUid($request->getQueryParams()['feed_id']);
-    
+
         if (!$feed instanceof Feed) {
             return new JsonResponse(['error' => ['message' => 'feed not found']], 404);
         }
-    
+
         $connectorConfiguration = $feed->getConnectorConfiguration();
-    
+
         $facebookClient = new FacebookClient($connectorConfiguration);
-    
+
         try {
             $accessTokenMetadata = $facebookClient->get('/debug_token', ['input_token' => $connectorConfiguration['access_token']]);
         } catch (\Throwable $e) {
@@ -236,19 +275,19 @@ class FacebookConnectController implements SingletonInterface
             ];
             return new JsonResponse($content, 500);
         }
-        
+
         return new JsonResponse($accessTokenMetadata);
     }
-    
+
     protected function buildConnectResponse(array $content, int $statusCode = 200): ResponseInterface
     {
         $view = GeneralUtility::makeInstance(StandaloneView::class);
         $view->setTemplatePathAndFilename(GeneralUtility::getFileAbsFileName('EXT:social_data/Resources/Private/Backend/Templates/ConnectCallback.html'));
         $view->assign('content', $content);
-    
+
         return new HtmlResponse($view->render(), $statusCode);
     }
-    
+
     protected function generateRedirectUri(): string
     {
         return $this->uriBuilder->buildUriFromRoute('socialdata_facebook_connect_callback', [],UriBuilder::ABSOLUTE_URL);

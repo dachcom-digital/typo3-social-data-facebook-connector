@@ -12,8 +12,9 @@
   ],
   "require": {
     "php": ">=7.4",
-    "dachcom-digital/typo3-social-data": "*",
-    "league/oauth2-facebook": "^2.0"
+    "symfony/http-client": "^5.4 || ^6.2",
+    "league/oauth2-facebook": "^2.0",
+    "dachcom-digital/typo3-social-data": "*"
   },
   "autoload": {
     "psr-4": {

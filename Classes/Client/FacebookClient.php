@@ -25,6 +25,11 @@ class FacebookClient
             ]
         ]);
     }
+
+    public function setConfigurationValue(string $name, $value): void
+    {
+        $this->configuration[$name] = $value;
+    }
     
     public function getOauthProvider(string $redirectUri = ''): Facebook
     {
